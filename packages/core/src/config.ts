@@ -170,13 +170,28 @@ export const layer = (options?: Options) =>
         })
       })
 
+      // A reload can land while a writer is still saving the file, so a malformed read keeps what this
+      // path last supplied instead of dropping every provider and model it contributes.
+      const lastParsed = new Map<string, Document>()
       const loadFile = Effect.fnUntraced(function* (filepath: string) {
         const text = yield* fs.readFileStringSafe(filepath)
-        if (text === undefined) return
+        if (text === undefined) {
+          lastParsed.delete(filepath)
+          return
+        }
         const substituted = yield* ConfigVariable.substitute({ type: "path", path: filepath, text })
         const info = yield* parseInfo(substituted, filepath)
-        if (!info) return
-        return new Document({ type: "document", path: AbsolutePath.make(filepath), info })
+        if (!info) {
+          const previous = lastParsed.get(filepath)
+          if (previous)
+            yield* Effect.logWarning("configuration file did not parse; keeping its last loaded document", {
+              path: filepath,
+            })
+          return previous
+        }
+        const document = new Document({ type: "document", path: AbsolutePath.make(filepath), info })
+        lastParsed.set(filepath, document)
+        return document
       })
 
       const loadWellknownEntry = Effect.fnUntraced(function* (entry: WellKnown.Entry) {

@@ -34,6 +34,7 @@ import { withEnv } from "../fixture/env"
 import { location } from "../fixture/location"
 import { tmpdir, withTempDir } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
+import { waitUntil } from "../lib/eventually"
 
 const it = testEffect(Layer.empty)
 const itWithPermissions = process.platform === "win32" || process.getuid?.() === 0 ? it.live.skip : it.live
@@ -832,6 +833,64 @@ describe("Config", () => {
             yield* Effect.promise(() => fs.writeFile(file, JSON.stringify({ shell: "two" })))
             yield* Fiber.join(recreated).pipe(Effect.timeout("5 seconds"))
             expect(Config.latest(yield* config.entries(), "shell")).toBe("two")
+          }).pipe(
+            Effect.provide(
+              AppNodeBuilder.build(LayerNode.group([Config.node, Bus.node]), [
+                Config.node.replace(Config.configured({ system: false })),
+                Location.node.replace(
+                  Layer.succeed(
+                    Location.Service,
+                    Location.Service.of(location({ directory: AbsolutePath.make(project) })),
+                  ),
+                ),
+                Global.node.replace(Global.layerWith({ config: global, home: path.join(global, "home") })),
+                Credential.node.replace(emptyCredentialNode),
+                WellKnown.node.replace(emptyWellknownNode),
+              ]),
+            ),
+          )
+        }),
+      ),
+    ),
+  )
+
+  // Real watcher on purpose: this pins what a reload does when it reads a file mid-write, which the
+  // incident that motivated it produced with an editor-style non-atomic save.
+  it.live("keeps a file's last loaded document while it cannot be parsed", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const global = path.join(tmp.path, "global")
+          const project = path.join(tmp.path, "project")
+          const globalFile = path.join(global, "opencode.json")
+          const projectFile = path.join(project, "opencode.json")
+          const provider = (name: string) => ({ [name]: { models: { chat: { name: "Chat" } } } })
+          yield* Effect.promise(async () => {
+            await fs.mkdir(global, { recursive: true })
+            await fs.mkdir(project, { recursive: true })
+            await fs.writeFile(globalFile, JSON.stringify({ providers: provider("mock") }))
+            await fs.writeFile(projectFile, JSON.stringify({ shell: "one" }))
+          })
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const providers = () =>
+              config
+                .entries()
+                .pipe(Effect.map((entries) => Object.keys(Config.latest(entries, "providers") ?? {})))
+            expect(yield* providers()).toEqual(["mock"])
+            expect(Config.latest(yield* config.entries(), "shell")).toBe("one")
+            yield* Effect.sleep("10 millis")
+
+            // The project file proves the reload ran while the global file is mid-write.
+            yield* Effect.promise(async () => {
+              await fs.writeFile(globalFile, '{ "providers": {')
+              await fs.writeFile(projectFile, JSON.stringify({ shell: "two" }))
+            })
+            yield* waitUntil(config.entries().pipe(Effect.map((entries) => Config.latest(entries, "shell") === "two")))
+            expect(yield* providers()).toEqual(["mock"])
+
+            yield* Effect.promise(() => fs.writeFile(globalFile, JSON.stringify({ providers: provider("second") })))
+            yield* waitUntil(providers().pipe(Effect.map((names) => names.join(",") === "second")))
           }).pipe(
             Effect.provide(
               AppNodeBuilder.build(LayerNode.group([Config.node, Bus.node]), [
