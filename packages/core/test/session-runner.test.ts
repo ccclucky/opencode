@@ -5820,9 +5820,12 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests[1]?.toolChoice).toMatchObject({ type: "none" })
     // Protocols with native "none" keep these definitions for prompt caching.
     expect(s.requests[1]?.tools.map((tool) => tool.name)).toContain("echo")
-    expect(s.requests[1]?.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
+    // Models without assistant prefill reject a request that ends on an assistant message.
+    const compiled = yield* compileRequest(s.requests[1]!)
+    const wire = compiled.body as { messages: Array<{ role: string; content: string }> }
+    expect(wire.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: expect.stringContaining("MAXIMUM STEPS REACHED"),
     })
     expect(s.executions).toEqual(["done"])
     expect(yield* s.context).toMatchObject([
@@ -6741,15 +6744,13 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests[0]?.tools.map((tool) => tool.name)).toContain("echo")
     expect(s.requests[1]?.toolChoice).toBeUndefined()
     expect(s.requests[1]?.tools.map((tool) => tool.name)).toContain("echo")
-    expect(s.requests[1]?.messages.at(-1)).not.toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
-    })
+    // The retry repeats the first step, so it carries none of the final-step instruction.
+    expect(s.requests[1]?.messages).toEqual(s.requests[0]?.messages)
     expect(s.requests[2]?.toolChoice).toMatchObject({ type: "none" })
     // The final step keeps tool definitions to preserve provider prompt caching.
     expect(s.requests[2]?.tools.map((tool) => tool.name)).toContain("echo")
     expect(s.requests[2]?.messages.at(-1)).toMatchObject({
-      role: "assistant",
+      role: "user",
       content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
     })
     expect(s.executions).toEqual(["recovered"])
