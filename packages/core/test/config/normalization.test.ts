@@ -484,6 +484,26 @@ describe("ConfigNormalize", () => {
     ])
   })
 
+  test("keeps a flat MCP server whose timeout uses the object form", () => {
+    const result = normalized({
+      mcp: {
+        local: { type: "local", command: ["local"], timeout: { startup: 60000, execution: 43200000 } },
+        remote: { type: "remote", url: "https://remote.example.com", timeout: { catalog: 9000 } },
+        off: { type: "local", command: ["off"], enabled: false, timeout: { startup: 1000 } },
+      },
+    })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.encoded.mcp).toEqual({
+      servers: {
+        local: { type: "local", command: ["local"], timeout: { startup: 60000, execution: 43200000 } },
+        remote: { type: "remote", url: "https://remote.example.com", timeout: { catalog: 9000 } },
+        off: { type: "local", command: ["off"], disabled: true, timeout: { startup: 1000 } },
+      },
+    })
+    expect(Schema.decodeUnknownSync(Info, options)(result.encoded).mcp?.servers?.off?.disabled).toBe(true)
+  })
+
   test("uses raw MCP discriminators for reserved server names", () => {
     const result = normalized({
       mcp: {

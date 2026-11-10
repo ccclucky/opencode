@@ -288,6 +288,13 @@ function normalizeMcp(input: Record<string, unknown>, encoded: Record<string, un
           )
           return
         }
+        // A flat legacy entry may already carry the current object timeout. Read it as a current server so the
+        // deprecated number shape does not drop the whole server.
+        if (isRecord(value) && isRecord(value.timeout)) {
+          const server = decodeEncoded(ConfigMCP.Server, enabledToDisabled(value), path, diagnostics)
+          if (server !== undefined) setOwn(legacyServers, name, server)
+          return
+        }
         const server = decodeValue(ConfigMCPV1.Info, value, path, diagnostics)
         if (server !== undefined)
           setOwn(legacyServers, name, canonical(ConfigMCP.Server, ConfigMigrateV1.migrateMcp(server)))
@@ -824,6 +831,12 @@ function isDirectLegacyMcp(value: unknown) {
 
 function isEnabledOnlyMcp(value: unknown) {
   return isRecord(value) && !own(value, "type") && typeof value.enabled === "boolean"
+}
+
+// V1 spelled the same switch `enabled`, while current servers use `disabled`.
+function enabledToDisabled(value: Record<string, unknown>) {
+  if (typeof value.enabled !== "boolean" || own(value, "disabled")) return value
+  return { ...value, disabled: !value.enabled }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
