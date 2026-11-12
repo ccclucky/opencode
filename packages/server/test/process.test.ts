@@ -229,6 +229,39 @@ it.live("pairing links sign in browsers with a cookie and API clients with a tok
   }),
 )
 
+it.live("pairing link HEAD probes do not spend the code", () =>
+  Effect.gen(function* () {
+    const server = yield* ServerProcess.start<never, never>({
+      hostname: "127.0.0.1",
+      port: 0,
+      password: "secret",
+      app: { version: "test-version" },
+      database: { path: ":memory:" },
+    })
+    const base = HttpServer.formatAddress(server.address)
+    const request = (pathname: string, init?: RequestInit) =>
+      Effect.promise(() => fetch(new URL(pathname, base), { redirect: "manual", ...init }))
+    const pair = Effect.gen(function* () {
+      const response = yield* request("/api/pair", {
+        method: "POST",
+        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+      })
+      expect(response.status).toBe(200)
+      return (yield* Effect.promise(() => response.json())) as { code: string; expires_in: number }
+    })
+
+    const link = yield* pair
+    const probe = yield* request(`/auth/connect/${link.code}`, { method: "HEAD" })
+    expect(probe.status).toBe(200)
+    expect(probe.headers.get("set-cookie")).toBeNull()
+    expect((yield* request("/auth/connect/unknown", { method: "HEAD" })).status).toBe(401)
+
+    const follow = yield* request(`/auth/connect/${link.code}`, { headers: { accept: "text/html" } })
+    expect(follow.status).toBe(302)
+    expect((yield* request(`/auth/connect/${link.code}`, { headers: { accept: "text/html" } })).status).toBe(401)
+  }),
+)
+
 async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, expected: string) {
   while (true) {
     const next = await reader.read()

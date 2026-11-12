@@ -8,6 +8,7 @@ const TTL = Duration.minutes(5)
 
 export interface Interface {
   readonly issue: () => Effect.Effect<{ readonly code: string; readonly expires_in: number }>
+  readonly peek: (code: string) => Effect.Effect<boolean>
   readonly consume: (code: string) => Effect.Effect<boolean>
 }
 
@@ -25,6 +26,9 @@ const layer = Layer.effect(
         const code = randomBytes(16).toString("base64url")
         yield* Cache.set(cache, code, true)
         return { code, expires_in: Duration.toSeconds(TTL) }
+      }),
+      peek: Effect.fn("ServerPairing.peek")(function* (code) {
+        return yield* Cache.has(cache, code)
       }),
       consume: Effect.fn("ServerPairing.consume")(function* (code) {
         return yield* Cache.invalidateWhen(cache, code, () => true)

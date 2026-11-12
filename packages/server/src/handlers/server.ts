@@ -33,6 +33,10 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
         "server.connect",
         Effect.fn(function* (ctx) {
           const request = yield* HttpServerRequest.HttpServerRequest
+          // Link handlers such as wslview probe the URL with `curl -I` before opening it; a HEAD must
+          // report whether the code is usable without spending it.
+          if (request.method === "HEAD")
+            return HttpServerResponse.empty({ status: (yield* pairing.peek(ctx.params.code)) ? 200 : 401 })
           // Browser navigations ask for HTML; everything else is an API client that wants the token.
           const browser = request.headers.accept?.includes("text/html") === true
           const token = (yield* pairing.consume(ctx.params.code)) ? ServerAuth.issueSession(auth) : undefined
