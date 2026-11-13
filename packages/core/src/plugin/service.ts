@@ -25,10 +25,10 @@ export type Generation = PluginDefinition & {
   readonly source?: Plugin.Source
   readonly features?: Plugin.Features
   /**
-   * The package's `./gui-experimental` bundle: its file URL, the plugin's options, and an opaque revision that changes
-   * with the plugin, its options or the bundle's content. A change to the bundle alone reloads it in the app without
-   * restarting the server entry.
+   * The plugin's options from its `opencode.json` entry, carried on the inventory so client parts such as the TUI
+   * receive them like the server entry does; the `./gui-experimental` bundle keeps its own copy for the app.
    */
+  readonly options?: Plugin.GuiBundle["options"]
   readonly gui?: { readonly file: string; readonly revision: string; readonly options: Plugin.GuiBundle["options"] }
 }
 

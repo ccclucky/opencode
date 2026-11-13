@@ -133,6 +133,13 @@ const load = Effect.fn("PluginModule.load")(function* (
     effect: () => Effect.void,
   }
   const revision = JSON.stringify([operation, server ? server.version : installed?.revision])
+  // Options cross to client parts — the TUI reads them from the inventory and the app from the
+  // `./gui-experimental` bundle — so they must be JSON.
+  const pluginOptions = yield* Schema.decodeUnknownEffect(GuiOptions)(operation.options).pipe(
+    Effect.mapError(
+      (cause) => new LoadError({ message: "Plugin options must be JSON to reach the plugin's client parts", cause }),
+    ),
+  )
   // A local plugin's `./gui-experimental` bundle is outside the server entry's import graph: watch it, and let its
   // content change the GUI's revision, so an edit reloads the GUI like a server or TUI edit reloads theirs. A package's
   // bundle changes only with its installed version. The GUI's revision is a hash: windows receive it, and the operation
@@ -140,14 +147,6 @@ const load = Effect.fn("PluginModule.load")(function* (
   const gui = local && entrypoints.gui ? fileURLToPath(entrypoints.gui) : undefined
   if (gui) yield* watch(gui)
   const bundle = gui ? Hash.sha256(yield* Effect.promise(() => readFile(gui))) : undefined
-  // The GUI receives the same options as the server entry; they cross to the app, so they must be JSON.
-  const guiOptions = entrypoints.gui
-    ? yield* Schema.decodeUnknownEffect(GuiOptions)(operation.options).pipe(
-        Effect.mapError(
-          (cause) => new LoadError({ message: "Plugin options must be JSON to reach its ./gui-experimental", cause }),
-        ),
-      )
-    : {}
   return {
     id: plugin.id,
     features: {
@@ -157,10 +156,11 @@ const load = Effect.fn("PluginModule.load")(function* (
       ...(entrypoints.gui ? { gui: true as const } : {}),
     },
     gui: entrypoints.gui
-      ? { file: entrypoints.gui, revision: Hash.sha256(JSON.stringify([revision, bundle])), options: guiOptions }
+      ? { file: entrypoints.gui, revision: Hash.sha256(JSON.stringify([revision, bundle])), options: pluginOptions }
       : undefined,
     revision,
     source: source(operation.target, installed?.version),
+    options: pluginOptions,
     effect: (host) => plugin.effect({ ...host, options: operation.options }),
   } satisfies Generation
 })

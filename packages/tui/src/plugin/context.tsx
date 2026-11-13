@@ -299,7 +299,12 @@ export function PluginProvider(props: ParentProps<{ packages: PackageSource; dir
           optional: true,
         })),
         ...serverTuiPlugins().map((plugin) => ({
-          entry: plugin.source.type === "package" ? plugin.source.target : plugin.source.path,
+          // The inventory carries the plugin's config options so entries declared outside the CLI config
+          // (project config) still reach setup with them.
+          entry: {
+            package: plugin.source.type === "package" ? plugin.source.target : plugin.source.path,
+            ...(plugin.options ? { options: plugin.options } : {}),
+          },
           install: false,
           optional: true,
         })),

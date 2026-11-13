@@ -459,6 +459,7 @@ it.live("loads a GUI-only package under its package name without running it, and
       id: "opencode-acme-gui",
       features: { gui: true },
       gui: { options: { region: "eu" } },
+      options: { region: "eu" },
       source: { type: "local", path: gui },
     })
     // The server lists a TUI-only directory as it always has: the TUI loads it from its own config.
@@ -474,6 +475,7 @@ it.live("loads a GUI-only package under its package name without running it, and
         source: { type: "local", path: gui },
         state: { status: "active" },
         features: { gui: true },
+        options: { region: "eu" },
       },
     ])
   }),

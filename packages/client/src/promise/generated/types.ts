@@ -411,7 +411,13 @@ export type ConfigModelVariantSettings = { compaction?: ProviderCompaction; enco
 
 export type PermissionRule = { action: string; resource: string; effect: PermissionEffect }
 
-export type PluginInfo = { id?: PluginID; source: PluginSource; features: PluginFeatures; state: PluginState }
+export type PluginInfo = {
+  id?: PluginID
+  source: PluginSource
+  features: PluginFeatures
+  state: PluginState
+  options?: { [x: string]: JsonValue }
+}
 
 export type SessionForkBoundary =
   | { type: "before"; messageID: SessionMessageID }

@@ -53,6 +53,8 @@ export const Info = Schema.Struct({
   source: Source,
   features: Features,
   state: State,
+  /** The plugin's options from its `opencode.json` entry, as its server entry receives them. */
+  options: Schema.Record(Schema.String, Schema.Json).pipe(optional),
 }).annotate({ identifier: "Plugin.Info" })
 
 const Updated = ephemeral({
