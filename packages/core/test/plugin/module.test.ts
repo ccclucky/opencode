@@ -479,6 +479,38 @@ it.live("loads a GUI-only package under its package name without running it, and
   }),
 )
 
+it.live("fails an activation whose effect export returns a Promise instead of an Effect", () =>
+  Effect.gen(function* () {
+    const directory = yield* tmpdirScoped()
+    yield* Effect.promise(() =>
+      writeFiles(directory.path, {
+        "promise-plugin/index.ts": 'export default { id: "promise-plugin", effect: async () => ({}) }',
+        "promise-hooks/index.ts":
+          'export default { id: "promise-hooks", effect: async () => ({ "tool.execute.before": async () => {} }) }',
+      }),
+    )
+    const modules = yield* PluginModule.make()
+    const plugins = yield* Plugin.Service
+
+    const first = yield* modules.load({ type: "add", target: path.join(directory.path, "promise-plugin"), options: {} })
+    const second = yield* modules.load({ type: "add", target: path.join(directory.path, "promise-hooks"), options: {} })
+    if ("pending" in first || "blocked" in first || "pending" in second || "blocked" in second)
+      return yield* Effect.die(new Error("The plugins were not loaded"))
+
+    // Without the generation guard, the Promise reaches the runtime's run loop
+    // ("Fiber.runLoop: Not a valid effect") instead of surfacing as a diagnostic activation failure.
+    yield* plugins.activate([first, second])
+    yield* plugins.awaitActivation
+    const listed = (yield* plugins.list()).filter((plugin) => plugin.source.type === "local")
+    expect(listed).toHaveLength(2)
+    for (const plugin of listed) {
+      expect(plugin.state.status).toBe("failed")
+      if (plugin.state.status !== "failed") return yield* Effect.die(new Error("expected a failed slot"))
+      expect(plugin.state.error).toContain("must return an Effect, not a Promise")
+    }
+  }),
+)
+
 for (const target of ["policy-fixture@1.2.3", "@scope/policy-fixture@1.2.3"]) {
   it.live(`blocks versioned package ${target} before npm resolution or installation`, () =>
     Effect.gen(function* () {

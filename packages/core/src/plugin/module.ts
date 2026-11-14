@@ -161,7 +161,19 @@ const load = Effect.fn("PluginModule.load")(function* (
       : undefined,
     revision,
     source: source(operation.target, installed?.version),
-    effect: (host) => plugin.effect({ ...host, options: operation.options }),
+    // An untrusted `effect` export may return a Promise (e.g. an async function): the runtime
+    // cannot interpret it, so activation would never settle and every awaitActivation waiter
+    // wedges. Fail fast here and point Promise-based plugins at `setup`, which has an adapter.
+    effect: (host) => {
+      const result = plugin.effect({ ...host, options: operation.options })
+      return Effect.isEffect(result)
+        ? result
+        : Effect.die(
+            new LoadError({
+              message: "Plugin effect must return an Effect, not a Promise; use setup for Promise-based plugins.",
+            }),
+          )
+    },
   } satisfies Generation
 })
 
