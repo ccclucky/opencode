@@ -238,6 +238,36 @@ describe("GithubCopilotPlugin", () => {
     }),
   )
 
+  const preSyncConfigModel = Effect.fn(function* (metadata: Record<string, string>) {
+    const providers = yield* Provider.Service
+    const models = yield* Model.Service
+    const requests: string[] = []
+    yield* connect(metadata)
+    // The account lookup never answers, so the first refresh is still running when the model is read.
+    const pending = HttpClient.make((request) =>
+      Effect.sync(() => requests.push(request.url)).pipe(Effect.andThen(Effect.never)),
+    )
+    yield* addPlugin().pipe(Effect.provideService(HttpClient.HttpClient, pending))
+    yield* advance(() => requests.length > 0)
+    // Config collapse declares models after the plugin fold, without a package of their own.
+    yield* providers.transform((editor) => {
+      editor.models.update(Provider.ID.githubCopilot, Model.ID.make("gemini-4-hydrogen"), () => {})
+    })
+    const model = required(yield* models.get(Provider.ID.githubCopilot, Model.ID.make("gemini-4-hydrogen")))
+    return { package: model.package, baseURL: model.settings?.baseURL }
+  })
+
+  it.effect("routes a config-declared model before the first model list arrives", () =>
+    Effect.gen(function* () {
+      expect(
+        yield* preSyncConfigModel({ enterpriseUrl: "company.ghe.com", apiEndpoint: "https://api.tenant.ghe.com" }),
+      ).toEqual({
+        package: "@opencode/ai/providers/openai-compatible",
+        baseURL: "https://api.tenant.ghe.com",
+      })
+    }),
+  )
+
   it.effect("registers GitHub Copilot device OAuth", () =>
     Effect.gen(function* () {
       yield* addPlugin()

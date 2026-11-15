@@ -256,27 +256,41 @@ export const GithubCopilotPlugin = define({
       editor.method.update(oauth(ctx.app))
     })
     yield* ctx.provider.transform((evt) => {
+      // Post-sync only: the live model list replaces the models.dev catalog. Before the
+      // first sync completes, routes are applied in the model transform below, which also
+      // sees models that config collapse adds after this fold has run.
+      const loaded = discovered.current
+      if (!loaded.models) return
       const item = evt.get(Provider.ID.githubCopilot)
       if (!item) return
-      const loaded = discovered.current
       const url = loaded.baseURL ?? (typeof login.settings.baseURL === "string" ? login.settings.baseURL : baseURL())
-      if (loaded.models) {
-        const router = CopilotModels.autoModel(url, loaded.models)
-        evt.add({
-          info: item.provider,
-          models: [
-            ...CopilotModels.derive(url, loaded.models, Array.from(item.models.values())).values(),
-            ...(router ? [router] : []),
-          ],
-          sourceConnection: loaded.connection,
+      const router = CopilotModels.autoModel(url, loaded.models)
+      evt.add({
+        info: item.provider,
+        models: [
+          ...CopilotModels.derive(url, loaded.models, Array.from(item.models.values())).values(),
+          ...(router ? [router] : []),
+        ],
+        sourceConnection: loaded.connection,
+      })
+    })
+    yield* ctx.model.transform((models) => {
+      if (models.get(Provider.ID.githubCopilot, Model.ID.make("gpt-5-chat-latest"))) {
+        models.update(Provider.ID.githubCopilot, Model.ID.make("gpt-5-chat-latest"), (model) => {
+          // This chat-only alias conflicts with the Copilot GPT-5 Responses route,
+          // so hide it only for Copilot rather than for every provider catalog.
+          model.enabled = false
         })
-        return
       }
       // Without the live model list, the models.dev package says which Copilot API serves
       // each model: Anthropic means Messages, OpenAI means Responses, and anything else
-      // falls back to the model ID.
-      for (const id of item.models.keys()) {
-        evt.models.update(item.provider.id, id, (model) => {
+      // falls back to the model ID. Model state refolds on every provider change, so
+      // models that config collapse adds after the provider fold are routed here too.
+      const loaded = discovered.current
+      if (loaded.models) return
+      const url = loaded.baseURL ?? (typeof login.settings.baseURL === "string" ? login.settings.baseURL : baseURL())
+      for (const id of models.provider.get(Provider.ID.githubCopilot)?.models.keys() ?? []) {
+        models.update(Provider.ID.githubCopilot, id, (model) => {
           const route = CopilotModels.routeFor(
             model.modelID ?? model.id,
             model.package === "@opencode/ai/providers/anthropic"
@@ -288,15 +302,6 @@ export const GithubCopilotPlugin = define({
           )
           model.package = route.package
           model.settings = Provider.mergeOverlay(model.settings, { baseURL: route.baseURL })
-        })
-      }
-    })
-    yield* ctx.model.transform((models) => {
-      if (models.get(Provider.ID.githubCopilot, Model.ID.make("gpt-5-chat-latest"))) {
-        models.update(Provider.ID.githubCopilot, Model.ID.make("gpt-5-chat-latest"), (model) => {
-          // This chat-only alias conflicts with the Copilot GPT-5 Responses route,
-          // so hide it only for Copilot rather than for every provider catalog.
-          model.enabled = false
         })
       }
     })
