@@ -854,6 +854,25 @@ describe("Vcs", () => {
     ),
   )
 
+  it.live("keeps patches plain when the repository enables colour", () =>
+    withGit((directory) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(async () => {
+          await fs.appendFile(path.join(directory, ".git", "config"), "[color]\n\tui = always\n\tdiff = always\n")
+          await fs.writeFile(path.join(directory, "file.txt"), "one\n")
+          await commitAll(directory, "initial")
+          await fs.writeFile(path.join(directory, "file.txt"), "one\ntwo\n")
+        })
+        const vcs = yield* Vcs.Service
+        const diff = yield* vcs.diff("working")
+        expect(diff.map((item) => [item.file, item.additions, item.deletions])).toEqual([["file.txt", 1, 0]])
+        expect(diff[0]?.patch).toContain("\n@@ ")
+        expect(diff[0]?.patch).toContain("+two\n")
+        expect(diff[0]?.patch).not.toContain("\u001b[")
+      }),
+    ),
+  )
+
   it.live("respects the repository's symlink setting", () =>
     withGit((directory) =>
       Effect.gen(function* () {

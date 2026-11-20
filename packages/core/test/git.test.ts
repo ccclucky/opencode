@@ -199,6 +199,29 @@ describe("Git trees", () => {
     )
   })
 
+  it.live("keeps tree patches plain when the repository enables colour", () =>
+    Effect.gen(function* () {
+      const root = yield* tmpdirScoped()
+      yield* Effect.promise(async () => {
+        await initRepo(root.path)
+        await $`git config color.diff always`.cwd(root.path).quiet()
+        await Bun.write(path.join(root.path, "file.txt"), "one\n")
+      })
+      const git = yield* Git.Service
+      const repository = yield* git.repo.discover(AbsolutePath.make(root.path))
+      if (!repository) throw new Error("Repository not found")
+      const before = yield* git.tree.capture({ repository, scopes: [RelativePath.make(".")] })
+      yield* Effect.promise(() => Bun.write(path.join(root.path, "file.txt"), "one\ntwo\n"))
+      const after = yield* git.tree.capture({ repository, scopes: [RelativePath.make(".")] })
+
+      const diffs = yield* git.tree.diff({ repository, from: before, to: after })
+      expect(diffs.map((item) => [item.file, item.additions, item.deletions])).toEqual([["file.txt", 1, 0]])
+      expect(diffs[0]?.patch).toContain("\n@@ ")
+      expect(diffs[0]?.patch).toContain("+two\n")
+      expect(diffs[0]?.patch).not.toContain("\u001b[")
+    }),
+  )
+
   it.live("lists both sides of a rename as separate file changes", () =>
     Effect.gen(function* () {
       const root = yield* tmpdirScoped()

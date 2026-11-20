@@ -169,6 +169,10 @@ type GitOps = ReturnType<typeof makeGit>
 // `git status` does, or every CRLF checkout and symlink placeholder reads as changed.
 const cfg = [
   "--no-optional-locks",
+  // Patches are parsed, never shown: a user's `color.diff = always` would otherwise add escape codes to headers
+  // and hunks that chunk splitting and clients match on plain text.
+  "-c",
+  "color.diff=false",
   "-c",
   "core.fsmonitor=false",
   "-c",

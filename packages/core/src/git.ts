@@ -389,11 +389,15 @@ const layer = Layer.effect(
       yield* operation("reset", repository.worktree, ["reset", "--hard", revision])
     })
 
+    // Patches are parsed, never shown: a user's `color.diff = always` would otherwise add escape codes to headers
+    // and hunks that the chunk splitter and clients match on plain text.
     const repositoryArgs = (repository: Repository, args: string[]) => [
       "--git-dir",
       repository.gitDirectory,
       "--work-tree",
       repository.worktree,
+      "-c",
+      "color.diff=false",
       ...args,
     ]
 
