@@ -979,6 +979,29 @@ testEffect(Layer.empty).live("falls back to legacy when a remote server answers 
   }),
 )
 
+test("reconnects without the probe when a slow server already moved the probed connection to its modern era", async () => {
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* connect(
+          "probed-modern",
+          new ConfigMCP.Local({
+            type: "local",
+            command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-probed-modern.ts")],
+            protocol: "auto",
+            timeout: new ConfigMCP.Timeout({ startup: 1_000 }),
+          }),
+          import.meta.dir,
+        )
+        return { modern: connection.modern, tools: yield* connection.tools() }
+      }),
+    ),
+  )
+
+  expect(result.modern).toBe(false)
+  expect(result.tools.map((tool) => tool.name)).toEqual(["echo"])
+})
+
 test("applies the configured MCP catalog timeout", async () => {
   const result = Effect.runPromise(
     Effect.scoped(

@@ -556,14 +556,18 @@ export const connect = Effect.fnUntraced(function* (options: ConnectOptions) {
           },
         }).pipe(Effect.flatMap((transport) => initialize(transport, protocol)))
       // Some legacy servers exit on the auto probe's unknown request (Python SDK 1.3 does), so respawn for initialize.
+      // Our transport cannot probe on a disposable sibling, so the probe shares the server's one connection: when a
+      // slow start outlives the probe, the server has already moved that connection to its modern era and refuses
+      // the legacy initialize. Only a fresh spawn gets initialize first, which is what the caller's server accepts.
       // A shared connection (no roots) can't be legacy, so the pool opens its own private one instead.
       return yield* spawn(protocol).pipe(
         Effect.catchIf(
           (error) =>
             protocol === "auto" &&
             options.roots !== false &&
-            error instanceof SdkError &&
-            (error.code === SdkErrorCode.ConnectionClosed || error.code === SdkErrorCode.EraNegotiationFailed),
+            (error instanceof UnsupportedProtocolVersionError ||
+              (error instanceof SdkError &&
+                (error.code === SdkErrorCode.ConnectionClosed || error.code === SdkErrorCode.EraNegotiationFailed))),
           () => spawn("legacy"),
         ),
       )
